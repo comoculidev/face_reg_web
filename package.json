@@ -1,0 +1,12 @@
+{
+  "name": "foto-qeydiyyat",
+  "version": "1.0.0",
+  "description": "Uz tanima ile telebe foto qeydiyyat sistemi",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

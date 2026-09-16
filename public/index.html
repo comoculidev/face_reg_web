@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tələbə foto qeydiyyatı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="modal-back" id="rules" role="dialog" aria-modal="true" aria-labelledby="ruleTitle">
+  <div class="modal">
+    <p class="modal-count"><span id="ruleNo">1</span> / <span id="ruleTotal">5</span></p>
+    <h2 id="ruleTitle">Şəkil çəkilməzdən əvvəl</h2>
+    <p class="modal-text" id="ruleText">Eynək və papağı çıxarın.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" id="ruleBack" disabled>Geri</button>
+      <button type="button" class="btn primary" id="ruleNext">Növbəti</button>
+    </div>
+  </div>
+</div>
+
+<header class="site-head">
+  <h1>Tələbə foto qeydiyyatı</h1>
+  <p>Üzünüzü çərçivənin mərkəzinə tutun. Şəkil yalnız üz tanınandan sonra çəkilir.</p>
+</header>
+
+<main class="layout">
+
+  <div class="col">
+
+  <!-- 1. ŞƏKİL ÇƏKMƏ -->
+  <section class="stage" aria-label="Şəkil çəkmə">
+    <p class="step-tag">Addım 1 — üz şəkli</p>
+    <div class="viewport" id="viewport">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+      <img id="preview" alt="Çəkilmiş şəkil" hidden>
+      <div class="guide" id="guide" aria-hidden="true"></div>
+
+      <div class="veil" id="veil">
+        <p id="veilText">Kamera hazırlanır…</p>
+        <button type="button" class="btn ghost" id="startBtn" hidden>Kameranı işə sal</button>
+      </div>
+    </div>
+
+    <div class="readout" id="readout" data-state="wait">
+      <span class="dot"></span>
+      <span id="statusText">Model yüklənir…</span>
+    </div>
+
+    <div class="stage-actions">
+      <button type="button" class="btn primary" id="shootBtn" disabled>Şəkli çək</button>
+      <button type="button" class="btn ghost" id="retakeBtn" hidden>Yenidən çək</button>
+    </div>
+  </section>
+
+  <!-- 2. TƏLƏBƏ MƏLUMATLARI -->
+  <section class="form-panel" aria-label="Tələbə məlumatları">
+    <p class="step-tag">Addım 2 — tələbə məlumatları</p>
+    <form id="form" novalidate>
+      <fieldset id="formFields">
+      <div class="field">
+        <label for="ad">Ad</label>
+        <input id="ad" name="ad" type="text" autocomplete="given-name" required>
+      </div>
+
+      <div class="field">
+        <label for="soyad">Soyad</label>
+        <input id="soyad" name="soyad" type="text" autocomplete="family-name" required>
+      </div>
+
+      <div class="field">
+        <label for="ataAdi">Ata adı</label>
+        <input id="ataAdi" name="ataAdi" type="text" required>
+      </div>
+
+      <div class="field">
+        <label for="ixtisas">İxtisas</label>
+        <input id="ixtisas" name="ixtisas" type="text" required>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="qrup">Qrup</label>
+          <input id="qrup" name="qrup" type="text" placeholder="məs. 642a" autocapitalize="characters" autocomplete="off" required>
+        </div>
+
+        <div class="field">
+          <label for="kurs">Kurs</label>
+          <select id="kurs" name="kurs" required>
+            <option value="" selected disabled>Seçin</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="note" id="fileHint">Fayl adı: —</p>
+      </fieldset>
+    </form>
+  </section>
+
+  <!-- 3. TƏLƏBƏ BİLETİ TƏSDİQİ -->
+  <section class="card-step" id="cardStep" aria-label="Tələbə biletinin təsdiqi" hidden>
+    <p class="step-tag">Addım 3 — tələbə bileti təsdiqi</p>
+    <p class="card-intro">Referansdakı kimi tələbə biletinizin ön üzünün şəklini yükləyin. Sistem kartdakı ad-soyadı Addım 2-də yazdığınız ad və soyadla müqayisə edir və adın altında “AzTU” yazısını yoxlayır.</p>
+
+    <div class="ref-frame">
+      <img src="reference/telebe-bileti-numune.jpg" alt="AzTU TələbəPlus bileti nümunəsi — şəxsi məlumatlar gizlədilib">
+    </div>
+
+    <div class="field">
+      <label for="kartFile">Tələbə bileti şəkli</label>
+      <input id="kartFile" type="file" accept="image/jpeg,image/png,image/webp" autocomplete="off">
+    </div>
+
+    <p class="note" id="cardFileHint">Fayl: —</p>
+    <p class="msg" id="cardMsg" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- GÖNDƏR -->
+  <section class="form-panel" aria-label="Göndəriş">
+    <p class="locked" id="lockNote">Tələbə bileti şəkli təsdiqləndikdən sonra göndərmək mümkün olacaq.</p>
+    <button type="submit" form="form" class="btn send" id="sendBtn" disabled>Göndər</button>
+    <p class="msg" id="msg" role="status" aria-live="polite"></p>
+  </section>
+
+</main>
+
+<canvas id="shot" hidden></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

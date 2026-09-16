@@ -1,0 +1,387 @@
+:root{
+  --ink:#0d1b1e;
+  --ink-soft:#5a6b70;
+  --paper:#e9edef;
+  --surface:#ffffff;
+  --line:#c9d2d6;
+  --primary:#17454f;
+  --primary-dark:#0e2f36;
+  --live:#2f7d4f;
+  --warn:#a33b2a;
+  --focus:#c98a2b;
+}
+
+*{box-sizing:border-box}
+
+html,body{margin:0;padding:0}
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  font-size:16px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+.site-head{
+  max-width:1060px;
+  margin:0 auto;
+  padding:40px 24px 24px;
+}
+
+.site-head h1{
+  margin:0 0 6px;
+  font-size:clamp(1.6rem,3.4vw,2.3rem);
+  font-weight:600;
+  letter-spacing:-.015em;
+}
+
+.site-head p{
+  margin:0;
+  max-width:58ch;
+  color:var(--ink-soft);
+}
+
+.layout{
+  max-width:1060px;
+  margin:0 auto;
+  padding:0 24px 64px;
+  display:grid;
+  gap:28px;
+  grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  align-items:start;
+}
+
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+}
+
+/* ---------- kamera ---------- */
+
+.stage{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:16px;
+}
+
+.viewport{
+  position:relative;
+  width:100%;
+  aspect-ratio:4/3;
+  background:#0d1b1e;
+  border-radius:2px;
+  overflow:hidden;
+}
+
+.viewport video,
+.viewport canvas,
+.viewport img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.viewport video{transform:scaleX(-1)}
+.viewport #overlay{transform:scaleX(-1);pointer-events:none}
+
+.guide{
+  position:absolute;
+  left:50%;
+  top:48%;
+  transform:translate(-50%,-50%);
+  width:44%;
+  height:66%;
+  border:2px dashed rgba(255,255,255,.45);
+  border-radius:50% / 42%;
+  pointer-events:none;
+  transition:border-color .2s ease;
+}
+
+.guide[data-ok="1"]{border-color:rgba(120,230,160,.85);border-style:solid}
+
+.veil{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  background:rgba(13,27,30,.92);
+  color:#e9edef;
+  text-align:center;
+  padding:24px;
+}
+
+.veil[hidden]{display:none}
+.veil p{margin:0;max-width:34ch;font-size:.95rem}
+
+.readout{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:12px;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.82rem;
+  color:var(--ink-soft);
+}
+
+.readout .dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--ink-soft);
+  flex:none;
+}
+
+.readout[data-state="ok"]{color:var(--live)}
+.readout[data-state="ok"] .dot{background:var(--live)}
+.readout[data-state="no"]{color:var(--warn)}
+.readout[data-state="no"] .dot{background:var(--warn)}
+
+.stage-actions{
+  display:flex;
+  gap:10px;
+  margin-top:16px;
+}
+
+/* ---------- form ---------- */
+
+.form-panel{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:24px;
+}
+
+.field{margin-bottom:16px}
+
+.row{display:grid;grid-template-columns:1fr 110px;gap:12px}
+
+label{
+  display:block;
+  margin-bottom:5px;
+  font-size:.86rem;
+  font-weight:500;
+  color:var(--ink);
+}
+
+input,select{
+  width:100%;
+  padding:10px 12px;
+  font:inherit;
+  font-size:.95rem;
+  color:var(--ink);
+  background:#fbfcfc;
+  border:1px solid var(--line);
+  border-radius:3px;
+  transition:border-color .15s ease,background .15s ease;
+}
+
+input:hover,select:hover{border-color:#9fadb3}
+
+input:focus-visible,select:focus-visible,
+.btn:focus-visible{
+  outline:2px solid var(--focus);
+  outline-offset:2px;
+  border-color:var(--primary);
+  background:#fff;
+}
+
+select{appearance:none;background-image:none}
+
+.note{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.75rem;
+  color:var(--ink-soft);
+  word-break:break-all;
+  margin:4px 0 18px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
+
+/* ---------- düymələr ---------- */
+
+.btn{
+  font:inherit;
+  font-weight:500;
+  font-size:.95rem;
+  padding:11px 20px;
+  border-radius:3px;
+  border:1px solid transparent;
+  cursor:pointer;
+  transition:background .15s ease,color .15s ease,border-color .15s ease;
+}
+
+.btn.primary{background:var(--primary);color:#fff}
+.btn.primary:hover:not(:disabled){background:var(--primary-dark)}
+
+.btn.ghost{background:transparent;color:var(--primary);border-color:var(--line)}
+.btn.ghost:hover:not(:disabled){border-color:var(--primary)}
+
+.btn.send{width:100%;background:var(--live);color:#fff;padding:13px}
+.btn.send:hover:not(:disabled){background:#24623c}
+
+.btn:disabled{
+  background:#dde3e5;
+  color:#8b999e;
+  border-color:transparent;
+  cursor:not-allowed;
+}
+
+.msg{
+  margin:12px 0 0;
+  font-size:.88rem;
+  min-height:1.2em;
+}
+
+.msg[data-kind="ok"]{color:var(--live)}
+.msg[data-kind="err"]{color:var(--warn)}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+
+/* ---------- qaydalar pop-upı ---------- */
+
+.modal-back{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  background:rgba(13,27,30,.72);
+}
+
+.modal-back[hidden]{display:none}
+
+.modal{
+  background:var(--surface);
+  border-radius:4px;
+  max-width:420px;
+  width:100%;
+  padding:28px;
+}
+
+.modal-count{
+  margin:0 0 14px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;
+  color:var(--ink-soft);
+}
+
+.modal h2{
+  margin:0 0 10px;
+  font-size:1.15rem;
+  font-weight:600;
+  letter-spacing:-.01em;
+}
+
+.modal-text{
+  margin:0 0 24px;
+  color:var(--ink-soft);
+  min-height:4.5em;
+}
+
+.modal-actions{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.modal-actions .btn{flex:1}
+
+/* ---------- addımlar və bilet ---------- */
+
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+.step-tag{
+  margin:0 0 12px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.74rem;
+  color:var(--ink-soft);
+}
+
+.card-step{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:16px;
+}
+
+.card-intro{
+  margin:0 0 14px;
+  font-size:.9rem;
+  color:var(--ink-soft);
+}
+
+.ref-frame{
+  width:100%;
+  max-width:260px;
+  margin:0 auto 18px;
+  border:1px solid var(--line);
+  border-radius:3px;
+  overflow:hidden;
+}
+
+.ref-frame img{
+  display:block;
+  width:100%;
+  height:auto;
+}
+
+.check-field{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:4px 0 16px;
+  font-size:.92rem;
+  cursor:pointer;
+}
+
+.check-field input{
+  width:auto;
+  margin-top:3px;
+  flex:none;
+  accent-color:var(--primary);
+}
+
+.check-field span{color:var(--ink)}
+
+fieldset{border:0;margin:0;padding:0;min-width:0}
+
+fieldset:disabled{opacity:.55}
+
+.locked{
+  margin:0 0 18px;
+  padding:10px 12px;
+  font-size:.85rem;
+  color:var(--ink-soft);
+  background:#f1f4f5;
+  border-left:3px solid var(--line);
+}
+
+.locked[hidden]{display:none}
+
+.verified{
+  margin:0 0 18px;
+  padding:10px 12px;
+  font-size:.85rem;
+  color:var(--live);
+  background:#eef6f1;
+  border-left:3px solid var(--live);
+}
+
+.sr-only{
+  position:absolute;
+  width:1px;height:1px;
+  padding:0;margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+  border:0;
+}
