@@ -214,6 +214,7 @@ shootBtn.addEventListener('click', async () => {
   shootBtn.hidden = true;
   retakeBtn.hidden = false;
   cardStep.hidden = false;
+  getCardOCRWorker().catch(() => {});
   setStatus('ok', 'Şəkil hazırdır');
   setMsg('');
   refreshForm();
@@ -234,6 +235,8 @@ retakeBtn.addEventListener('click', () => {
   cardVerified = false;
   cardAd = '';
   cardAztu = false;
+  cardOCRText = '';
+  cardVerificationId++;
   setCardMsg('');
   applyLock();
   setMsg('');
@@ -253,20 +256,65 @@ const lockNote     = document.getElementById('lockNote');
 let cardVerified = false;
 let cardAd = '';
 let cardAztu = false;
+let cardOCRText = '';
+let cardOCRBusy = false;
+let cardOCRWorker = null;
+let cardOCRWorkerPromise = null;
+let cardVerificationId = 0;
 
 function setCardMsg(text, kind){
   cardMsg.textContent = text || '';
   if (kind) cardMsg.dataset.kind = kind; else cardMsg.removeAttribute('data-kind');
 }
 
-const AZ_LOWER = { 'İ': 'i', 'I': 'ı' };
+/* OCR yalnız kart yüklənəndə bir dəfə işləyir.
+   Sonrakı ad/soyad dəyişiklikləri yalnız artıq oxunmuş nəticə ilə müqayisə olunur. */
 function normalizeName(text){
   return String(text || '')
-    .trim()
-    .replace(/[İI]/g, ch => AZ_LOWER[ch])
+    .normalize('NFKC')
+    .replace(/[İIı]/g, 'i')
+    .replace(/[Əə]/g, 'e')
+    .replace(/[Öö]/g, 'o')
+    .replace(/[Üü]/g, 'u')
+    .replace(/[Ğğ]/g, 'g')
+    .replace(/[Şş]/g, 's')
+    .replace(/[Çç]/g, 'c')
     .toLocaleLowerCase('az')
     .replace(/[^\p{L}\s'-]/gu, ' ')
-    .replace(/\s+/g, ' ');
+    .replace(/['’-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactOCR(text){
+  return normalizeName(text).replace(/\s+/g, '');
+}
+
+function levenshtein(a, b){
+  a = String(a || '');
+  b = String(b || '');
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  if (a.length > b.length) [a, b] = [b, a];
+  let prev = Array.from({length: a.length + 1}, (_, i) => i);
+  for (let j = 1; j <= b.length; j++) {
+    const cur = [j];
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[i] = Math.min(cur[i - 1] + 1, prev[i] + 1, prev[i - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[a.length];
+}
+
+function similarity(a, b){
+  a = compactOCR(a);
+  b = compactOCR(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  return 1 - (levenshtein(a, b) / Math.max(a.length, b.length));
 }
 
 function nameMatchesOCR(text){
@@ -274,12 +322,128 @@ function nameMatchesOCR(text){
   const ocr = normalizeName(text);
   if (!target || !ocr) return false;
 
-  // OCR bəzən sözləri sətirlərə bölür və ya əlavə boşluqlar yaradır.
-  if (ocr.includes(target)) return true;
+  // Əvvəlcə tam və sadə uyğunluqlar.
+  if (ocr.includes(target) || compactOCR(ocr).includes(compactOCR(target))) return true;
 
   const targetParts = target.split(' ').filter(Boolean);
-  if (targetParts.length < 2) return false;
-  return targetParts.every(part => ocr.includes(part));
+  const ocrParts = ocr.split(' ').filter(Boolean);
+  if (targetParts.length < 2 || ocrParts.length < 2) return false;
+
+  // Ad və soyad kartın xüsusi crop-undan gəldiyi üçün kiçik OCR səhvlərinə tolerantıq.
+  const scores = targetParts.map(targetPart => {
+    let best = 0;
+    for (const ocrPart of ocrParts) best = Math.max(best, similarity(targetPart, ocrPart));
+    return best;
+  });
+
+  return scores.every(score => score >= 0.74) &&
+         (scores.reduce((a, b) => a + b, 0) / scores.length) >= 0.82;
+}
+
+function loadImage(file){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Şəkil açıla bilmədi')); };
+    img.src = url;
+  });
+}
+
+function prepareCardCanvas(img){
+  // Kart nümunəsi portretdir. Telefon şəkli yan çevrilibsə avtomatik düzəldirik.
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+  const rotate = sourceW > sourceH ? Math.PI / 2 : 0;
+  const w = rotate ? sourceH : sourceW;
+  const h = rotate ? sourceW : sourceH;
+
+  const maxW = 1200;
+  const scale = Math.min(1, maxW / w);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  ctx.save();
+  if (rotate === Math.PI / 2) {
+    ctx.translate(canvas.width, 0);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(img, 0, 0, canvas.height, canvas.width);
+  } else {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  }
+  ctx.restore();
+  return canvas;
+}
+
+function cropRegion(source, x, y, w, h, scale = 3){
+  const sx = Math.max(0, Math.floor(source.width * x));
+  const sy = Math.max(0, Math.floor(source.height * y));
+  const sw = Math.min(source.width - sx, Math.floor(source.width * w));
+  const sh = Math.min(source.height - sy, Math.floor(source.height * h));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function preprocessForOCR(source){
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0);
+
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = image.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // Luminosity + contrast: qara mətn / ağ kart fonunu OCR üçün ayırır.
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const contrast = Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
+    d[i] = d[i + 1] = d[i + 2] = contrast;
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+async function getCardOCRWorker(){
+  if (cardOCRWorker) return cardOCRWorker;
+  if (cardOCRWorkerPromise) return cardOCRWorkerPromise;
+  if (!window.Tesseract) throw new Error('Şəkil oxuma modulu yüklənmədi');
+
+  cardOCRWorkerPromise = Tesseract.createWorker('eng', 1, {
+    logger: m => {
+      if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+        setCardMsg('Tələbə bileti oxunur… ' + Math.round(m.progress * 100) + '%');
+      }
+    }
+  }).then(async worker => {
+    await worker.setParameters({
+      tessedit_pageseg_mode: '7',
+      preserve_interword_spaces: '1'
+    });
+    cardOCRWorker = worker;
+    return worker;
+  }).catch(err => {
+    cardOCRWorkerPromise = null;
+    throw err;
+  });
+
+  return cardOCRWorkerPromise;
+}
+
+async function recognizeRegion(worker, canvas){
+  const processed = preprocessForOCR(canvas);
+  const result = await worker.recognize(processed);
+  return result && result.data ? (result.data.text || '') : '';
 }
 
 async function verifyCardImage(file){
@@ -288,43 +452,90 @@ async function verifyCardImage(file){
     cardVerified = false;
     cardAd = '';
     cardAztu = false;
+    cardOCRText = '';
     setCardMsg('Əvvəlcə Addım 2-də Ad və Soyad xanalarını doldurun.', 'err');
     refreshForm();
     return;
   }
 
-  if (!window.Tesseract){
-    cardVerified = false;
-    setCardMsg('Şəkil oxuma modulu yüklənmədi. İnternet bağlantısını yoxlayın və səhifəni yeniləyin.', 'err');
-    refreshForm();
-    return;
-  }
-
+  const myVerification = ++cardVerificationId;
+  cardOCRBusy = true;
   cardVerified = false;
   cardAd = '';
   cardAztu = false;
+  cardOCRText = '';
   kartFile.disabled = true;
-  setCardMsg('Tələbə bileti yoxlanılır…');
+  setCardMsg('Tələbə bileti hazırlanır…');
   refreshForm();
 
   try {
-    const result = await Tesseract.recognize(file, 'eng', {
-      logger: m => {
-        if (m.status === 'recognizing text' && typeof m.progress === 'number'){
-          setCardMsg('Tələbə bileti oxunur… ' + Math.round(m.progress * 100) + '%');
-        }
-      }
+    const img = await loadImage(file);
+    if (myVerification !== cardVerificationId) return;
+
+    const cardCanvas = prepareCardCanvas(img);
+
+    // Referans kartındakı sabit sahələr: ad-soyad yuxarı sol hissədə,
+    // AzTU isə onun dərhal altında yerləşir. Bir neçə piksel/sərhəd ehtiyatı verilir.
+    const nameRegions = [
+      [0.035, 0.315, 0.46, 0.145],
+      [0.025, 0.300, 0.52, 0.175]
+    ];
+    const azRegions = [
+      [0.025, 0.425, 0.30, 0.085],
+      [0.015, 0.405, 0.38, 0.12]
+    ];
+
+    const worker = await getCardOCRWorker();
+    if (myVerification !== cardVerificationId) return;
+
+    // Hər yeni kart üçün əvvəlki fallback rejimini sıfırla.
+    await worker.setParameters({
+      tessedit_pageseg_mode: '7',
+      preserve_interword_spaces: '1',
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzƏəİIıÖöÜüĞğŞşÇç ' 
     });
 
-    const text = result.data.text || '';
-    const hasName = nameMatchesOCR(text);
-    const hasAzTU = /\baz\s*tu\b/i.test(text) || /\baztu\b/i.test(text);
+    let nameText = '';
+    let azText = '';
+
+    // Əsas name crop. İlk nəticə kifayət edərsə ikinci OCR lazım deyil.
+    for (const region of nameRegions) {
+      const crop = cropRegion(cardCanvas, ...region, 4);
+      const text = await recognizeRegion(worker, crop);
+      nameText += '\n' + text;
+      if (nameMatchesOCR(nameText)) break;
+    }
+
+    for (const region of azRegions) {
+      const crop = cropRegion(cardCanvas, ...region, 4);
+      const text = await recognizeRegion(worker, crop);
+      azText += '\n' + text;
+      if (/\baz\s*tu\b/i.test(azText) || /\baztu\b/i.test(azText)) break;
+    }
+
+    // Crop OCR uğursuz olarsa yalnız ehtiyat kimi bütün kartı bir dəfə oxu.
+    if (!nameMatchesOCR(nameText) || !(/\baz\s*tu\b/i.test(azText) || /\baztu\b/i.test(azText))) {
+      await worker.setParameters({
+        tessedit_pageseg_mode: '11',
+        preserve_interword_spaces: '1',
+        tessedit_char_whitelist: ''
+      });
+      const fullText = await recognizeRegion(worker, cardCanvas);
+      cardOCRText = [nameText, azText, fullText].join('\n');
+    } else {
+      cardOCRText = [nameText, azText].join('\n');
+    }
+
+    if (myVerification !== cardVerificationId) return;
+
+    const hasName = nameMatchesOCR(cardOCRText);
+    const hasAzTU = /\baz\s*tu\b/i.test(cardOCRText) || /\baztu\b/i.test(cardOCRText);
 
     cardAztu = hasAzTU;
     cardAd = hasName ? (fields.ad.value.trim() + ' ' + fields.soyad.value.trim()) : '';
 
     if (!hasName){
-      setCardMsg('Kartdakı ad-soyad Addım 2-də yazdığınız ad və soyadla uyğun gəlmir.', 'err');
+      setCardMsg('Kartdakı ad-soyad Addım 2-də yazdığınız ad və soyadla uyğun gəlmir. Kartdakı adın aydın göründüyü şəkil yükləyin.', 'err');
     } else if (!hasAzTU){
       setCardMsg('Ad-soyad uyğun gəldi, amma kartda “AzTU” yazısı tapılmadı.', 'err');
     } else {
@@ -333,35 +544,46 @@ async function verifyCardImage(file){
     }
   } catch (e) {
     console.error(e);
-    setCardMsg('Tələbə bileti oxunmadı. Şəkli daha aydın şəkildə yenidən yükləyin.', 'err');
+    cardVerified = false;
+    cardAd = '';
+    cardAztu = false;
+    setCardMsg('Tələbə bileti oxunmadı. Şəkli daha aydın və kartın ön üzünü tam göstərən formada yenidən yükləyin.', 'err');
   } finally {
-    kartFile.disabled = false;
-    refreshForm();
+    if (myVerification === cardVerificationId) {
+      cardOCRBusy = false;
+      kartFile.disabled = false;
+      refreshForm();
+    }
   }
 }
 
 kartFile.addEventListener('change', () => {
   const file = kartFile.files && kartFile.files[0];
   cardFileHint.textContent = 'Fayl: ' + (file ? file.name : '—');
+  cardVerificationId++;
   verifyCardImage(file);
 });
 
-fields.ad.addEventListener('input', () => {
-  cardVerified = false;
-  cardAd = '';
-  cardAztu = false;
-  setCardMsg('');
-  if (kartFile.value) verifyCardImage(kartFile.files[0]);
+function recheckCardAgainstFields(){
+  if (!cardOCRText) return;
+  const hasName = nameMatchesOCR(cardOCRText);
+  const hasAzTU = /\baz\s*tu\b/i.test(cardOCRText) || /\baztu\b/i.test(cardOCRText);
+  cardAztu = hasAzTU;
+  cardVerified = hasName && hasAzTU;
+  cardAd = hasName ? (fields.ad.value.trim() + ' ' + fields.soyad.value.trim()) : '';
+
+  if (cardVerified) {
+    setCardMsg('Tələbə bileti təsdiqləndi.', 'ok');
+  } else if (!hasName) {
+    setCardMsg('Kartdakı ad-soyad Addım 2-də yazdığınız ad və soyadla uyğun gəlmir.', 'err');
+  } else if (!hasAzTU) {
+    setCardMsg('Ad-soyad uyğun gəldi, amma kartda “AzTU” yazısı tapılmadı.', 'err');
+  }
   refreshForm();
-});
-fields.soyad.addEventListener('input', () => {
-  cardVerified = false;
-  cardAd = '';
-  cardAztu = false;
-  setCardMsg('');
-  if (kartFile.value) verifyCardImage(kartFile.files[0]);
-  refreshForm();
-});
+}
+
+fields.ad.addEventListener('input', recheckCardAgainstFields);
+fields.soyad.addEventListener('input', recheckCardAgainstFields);
 
 function applyLock(){
   lockNote.textContent = cardVerified
@@ -472,7 +694,7 @@ const RULES = [
   },
   {
     title: 'Tələbə biletiniz yanınızda olsun',
-    text: 'Şəkildən sonra biletin ön üzünün şəklini çəkəcəksiniz, bilet tam kadra düşsün və üzərindəki yazılar oxunsun, Ad Soyad bölməsini tələbə kartı ilə eyni olacaq şəkildə doldurun. Bu şəkil saxlanılmır, yalnız yoxlanılır.'
+    text: 'Şəkildən sonra biletin ön üzünün şəklini çəkəcəksiniz — bilet tam kadra düşsün və üzərindəki yazılar oxunsun. Bu şəkil saxlanılmır, yalnız yoxlanılır.'
   }
 ];
 
