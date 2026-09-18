@@ -28,7 +28,6 @@ const fields = {
   ataAdi:  document.getElementById('ataAdi'),
   ixtisas: document.getElementById('ixtisas'),
   qrup:    document.getElementById('qrup'),
-  kurs:    document.getElementById('kurs')
 };
 
 let detector   = null;   // 'faceapi' | 'native'

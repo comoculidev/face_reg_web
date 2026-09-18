@@ -59,16 +59,13 @@ function normalizeName(text) {
 
 app.post('/api/qeydiyyat', (req, res) => {
   try {
-    const { ad, soyad, ataAdi, ixtisas, qrup, kurs, sekil, kartAd, kartAztu } = req.body || {};
+    const { ad, soyad, ataAdi, ixtisas, qrup, sekil, kartAd, kartAztu } = req.body || {};
 
-    const required = { ad, soyad, ataAdi, ixtisas, qrup, kurs };
+    const required = { ad, soyad, ataAdi, ixtisas, qrup };
     for (const [key, value] of Object.entries(required)) {
       if (!value || !String(value).trim()) {
         return res.status(400).json({ ok: false, error: 'Bu xana boş qalıb: ' + key });
       }
-    }
-    if (!['1', '2', '3', '4'].includes(String(kurs))) {
-      return res.status(400).json({ ok: false, error: 'Kurs 1, 2, 3 və ya 4 olmalıdır.' });
     }
     if (!sekil || !/^data:image\/(jpeg|png);base64,/.test(sekil)) {
       return res.status(400).json({ ok: false, error: 'Şəkil tapılmadı. Əvvəlcə şəkil çəkin.' });
@@ -101,16 +98,15 @@ app.post('/api/qeydiyyat', (req, res) => {
       ataAdi: String(ataAdi).trim(),
       ixtisas: String(ixtisas).trim(),
       qrup: String(qrup).trim(),
-      kurs: String(kurs),
       fayl: path.basename(filePath),
       tarix: new Date().toISOString()
     };
 
     // CSV
     if (!fs.existsSync(CSV_PATH)) {
-      fs.writeFileSync(CSV_PATH, '\uFEFFAd,Soyad,Ata adı,İxtisas,Qrup,Kurs,Fayl,Tarix\n', 'utf8');
+      fs.writeFileSync(CSV_PATH, '\uFEFFAd,Soyad,Ata adı,İxtisas,Qrup,Fayl,Tarix\n', 'utf8');
     }
-    const row = [record.ad, record.soyad, record.ataAdi, record.ixtisas, record.qrup, record.kurs, record.fayl, record.tarix]
+    const row = [record.ad, record.soyad, record.ataAdi, record.ixtisas, record.qrup, record.fayl, record.tarix]
       .map(csvCell).join(',') + '\n';
     fs.appendFileSync(CSV_PATH, row, 'utf8');
 
